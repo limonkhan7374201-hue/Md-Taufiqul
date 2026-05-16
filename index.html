@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexAudit — AI SEO Audit & Content Intelligence</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+                        body: ['"DM Sans"', 'system-ui', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#ECFDF5', 100: '#D1FAE5', 200: '#A7F3D0', 300: '#6EE7B7',
+                            400: '#34D399', 500: '#00E5A0', 600: '#059669', 700: '#047857',
+                            800: '#065F46', 900: '#064E3B',
+                        },
+                        surface: {
+                            950: '#060A13', 900: '#0A0F1C', 800: '#0F1629', 700: '#151D33',
+                            600: '#1B2540', 500: '#243050',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg: #060A13; --fg: #F9FAFB; --muted: #6B7280; --accent: #00E5A0;
+            --accent-dim: rgba(0,229,160,0.12); --card: #0F1629; --card-hover: #151D33;
+            --border: #1B2540; --danger: #EF4444; --warn: #F59E0B; --info: #3B82F6;
+        }
+        * { box-sizing: border-box; }
+        body { background: var(--bg); color: var(--fg); font-family: 'DM Sans', system-ui, sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+        .nav-item {
+            position: relative; transition: all 0.2s ease; display: flex;
+            align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem; font-size: 0.875rem; color: #9CA3AF; text-decoration: none;
+        }
+        .nav-item::before {
+            content: ''; position: absolute; left: 0; top: 50%;
+            transform: translateY(-50%) scaleY(0); width: 3px; height: 60%;
+            background: var(--accent); border-radius: 0 3px 3px 0;
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .nav-item:hover::before, .nav-item.active::before { transform: translateY(-50%) scaleY(1); }
+        .nav-item:hover, .nav-item.active { background: var(--accent-dim); color: var(--accent); }
+
+        .score-ring { transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1); }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(0,229,160,0.3); }
+            50% { box-shadow: 0 0 20px 4px rgba(0,229,160,0.15); }
+        }
+        .pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; } 100% { background-position: 200% 0; }
+        }
+        .skeleton {
+            background: linear-gradient(90deg, var(--card) 25%, var(--card-hover) 50%, var(--card) 75%);
+            background-size: 200% 100%; animation: shimmer 1.8s ease-in-out infinite; border-radius: 6px;
+        }
+
+        @keyframes fade-up {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-up { animation: fade-up 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards; opacity: 0; }
+
+        .btn-audit { position: relative; overflow: hidden; }
+        .btn-audit::after {
+            content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: conic-gradient(from 0deg, transparent, rgba(0,229,160,0.15), transparent 30%);
+            animation: spin-glow 3s linear infinite;
+        }
+        @keyframes spin-glow { to { transform: rotate(360deg); } }
+        .btn-audit > span { position: relative; z-index: 1; }
+
+        .severity-critical { border-left: 3px solid var(--danger); }
+        .severity-warning { border-left: 3px solid var(--warn); }
+        .severity-info { border-left: 3px solid var(--info); }
+
+        .tool-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid transparent;
+        }
+        .tool-card:hover {
+            border-color: var(--accent); transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0,229,160,0.08);
+        }
+
+        .grid-bg {
+            background-image:
+                linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .top-accent-line { background: linear-gradient(90deg, transparent, var(--accent), transparent); height: 1px; }
+        .tab-active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+        #sidebar { transition: transform 0.3s ease; }
+        @media (max-width: 1023px) {
+            #sidebar { transform: translateX(-100%); }
+            #sidebar.open { transform: translateX(0); }
+        }
+
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .status-connected { background: #00E5A0; box-shadow: 0 0 6px rgba(0,229,160,0.5); }
+        .status-disconnected { background: #EF4444; box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen overflow-x-hidden">
+    <div class="top-accent-line w-full fixed top-0 z-50"></div>
+    <div class="flex min-h-screen">
+
+        <!-- SIDEBAR -->
+        <aside id="sidebar" class="w-64 bg-surface-900 border-r border-surface-600 flex flex-col fixed h-full z-40 lg:translate-x-0">
+            <div class="p-5 border-b border-surface-600">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-brand-500 flex items-center justify-center">
+                        <i class="fa-solid fa-bolt text-surface-950 text-sm"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-display font-bold text-lg leading-none tracking-tight">NexAudit</h1>
+                        <span class="text-[10px] text-brand-500 font-medium tracking-widest uppercase">AI Intelligence</span>
+                    </div>
+                </div>
+            </div>
+            <nav class="flex-1 overflow-y-auto py-3 px-2 space-y-1" id="sidebar-nav">
+                <div class="px-3 pt-4 pb-1"><span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">SEO</span></div>
+                <a href="#" class="nav-item active" data-view="audit" onclick="switchView('audit', this)"><i class="fa-solid fa-magnifying-glass-chart w-4 text-center"></i> Site Audit</a>
+                <a href="#" class="nav-item" data-view="keywords" onclick="switchView('keywords', this)"><i class="fa-solid fa-key w-4 text-center"></i> Keyword Magic</a>
+                <a href="#" class="nav-item" data-view="tracking" onclick="switchView('tracking', this)"><i class="fa-solid fa-chart-line w-4 text-center"></i> Position Tracking</a>
+                <a href="#" class="nav-item" data-view="backlinks" onclick="switchView('backlinks', this)"><i class="fa-solid fa-link w-4 text-center"></i> Backlink Analytics</a>
+                <a href="#" class="nav-item" data-view="organic" onclick="switchView('organic', this)"><i class="fa-solid fa-leaf w-4 text-center"></i> Organic Research</a>
+                <a href="#" class="nav-item" data-view="keyword-gap" onclick="switchView('keyword-gap', this)"><i class="fa-solid fa-arrows-left-right w-4 text-center"></i> Keyword Gap</a>
+                <a href="#" class="nav-item" data-view="onpage" onclick="switchView('onpage', this)"><i class="fa-solid fa-file-circle-check w-4 text-center"></i> On Page SEO Checker</a>
+
+                <div class="px-3 pt-5 pb-1"><span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Competitor Research</span></div>
+                <a href="#" class="nav-item" data-view="domain" onclick="switchView('domain', this)"><i class="fa-solid fa-globe w-4 text-center"></i> Domain Overview</a>
+                <a href="#" class="nav-item" data-view="traffic" onclick="switchView('traffic', this)"><i class="fa-solid fa-signal w-4 text-center"></i> Traffic Analytics</a>
+                <a href="#" class="nav-item" data-view="market" onclick="switchView('market', this)"><i class="fa-solid fa-store w-4 text-center"></i> Market Explorer</a>
+
+                <div class="px-3 pt-5 pb-1"><span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Content Marketing</span></div>
+                <a href="#" class="nav-item" data-view="topic" onclick="switchView('topic', this)"><i class="fa-solid fa-lightbulb w-4 text-center"></i> Topic Research</a>
+                <a href="#" class="nav-item" data-view="seo-writing" onclick="switchView('seo-writing', this)"><i class="fa-solid fa-pen-nib w-4 text-center"></i> SEO Writing Assistant</a>
+                <a href="#" class="nav-item" data-view="content-audit" onclick="switchView('content-audit', this)"><i class="fa-solid fa-clipboard-check w-4 text-center"></i> Content Audit</a>
+
+                <div class="px-3 pt-5 pb-1"><span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Advertising (PPC)</span></div>
+                <a href="#" class="nav-item" data-view="ppc" onclick="switchView('ppc', this)"><i class="fa-solid fa-bullhorn w-4 text-center"></i> Keyword PPC Tool</a>
+                <a href="#" class="nav-item" data-view="ads-history" onclick="switchView('ads-history', this)"><i class="fa-solid fa-clock-rotate-left w-4 text-center"></i> Ads History</a>
+                <a href="#" class="nav-item" data-view="pla" onclick="switchView('pla', this)"><i class="fa-solid fa-tags w-4 text-center"></i> PLA Research</a>
+
+                <div class="px-3 pt-5 pb-1"><span class="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">Social Media</span></div>
+                <a href="#" class="nav-item" data-view="social-poster" onclick="switchView('social-poster', this)"><i class="fa-solid fa-share-nodes w-4 text-center"></i> Social Poster</a>
+                <a href="#" class="nav-item" data-view="social-analytics" onclick="switchView('social-analytics', this)"><i class="fa-solid fa-chart-pie w-4 text-center"></i> Social Analytics</a>
+                <a href="#" class="nav-item" data-view="social-ads" onclick="switchView('social-ads', this)"><i class="fa-solid fa-bullseye w-4 text-center"></i> Social Ads Management</a>
+            </nav>
+
+            <!-- Connection Status -->
+            <div class="p-4 border-t border-surface-600">
+                <div class="flex items-center gap-2 mb-3">
+                    <span id="status-dot" class="status-dot status-disconnected"></span>
+                    <span id="status-text" class="text-xs text-gray-400">Backend: Checking...</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center text-brand-500 text-xs font-bold">NA</div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-medium truncate">Demo User</p>
+                        <p class="text-xs text-gray-500">Pro Plan</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-30 hidden" onclick="toggleSidebar()"></div>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 lg:ml-64 min-h-screen grid-bg">
+            <header class="sticky top-0 z-20 bg-surface-950/80 backdrop-blur-xl border-b border-surface-600">
+                <div class="flex items-center justify-between px-4 lg:px-6 h-14">
+                    <div class="flex items-center gap-3">
+                        <button onclick="toggleSidebar()" class="lg:hidden p-2 rounded-md hover:bg-surface-700 transition-colors" aria-label="Toggle sidebar">
+                            <i class="fa-solid fa-bars text-gray-400"></i>
+                        </button>
+                        <span id="breadcrumb" class="text-sm text-gray-400 font-medium">SEO / Site Audit</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="relative hidden sm:block">
+                            <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs"></i>
+                            <input type="text" placeholder="Search tools..." class="bg-surface-800 border border-surface-600 rounded-lg pl-9 pr-4 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand-500/50 w-48 transition-all">
+                        </div>
+                        <button class="relative p-2 rounded-md hover:bg-surface-700 transition-colors" aria-label="Notifications">
+                            <i class="fa-solid fa-bell text-gray-400 text-sm"></i>
+                            <span class="absolute top-1 right-1 w-2 h-2 bg-brand-500 rounded-full"></span>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="p-4 lg:p-6 max-w-7xl mx-auto">
+
+                <!-- AUDIT VIEW -->
+                <section id="view-audit" class="view-section">
+                    <div class="mb-8">
+                        <h2 class="font-display text-3xl lg:text-4xl font-bold tracking-tight mb-2">
+                            AI-Powered <span class="text-brand-500">SEO Audit</span>
+                        </h2>
+                        <p class="text-gray-400 text-base max-w-xl">Analyze any Shopify store or product page. Get instant technical SEO insights, AI-powered content recommendations, and conversion strategies.</p>
+                    </div>
+
+                    <div class="bg-surface-800 border border-surface-600 rounded-2xl p-5 mb-6">
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <div class="flex-1 relative">
+                                <i class="fa-solid fa-link absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+                                <input id="url-input" type="url" placeholder="Enter store or product URL — e.g. https://allbirds.com/products/wool-runner" class="w-full bg-surface-900 border border-surface-600 rounded-xl pl-11 pr-4 py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm" aria-label="Store or product URL">
+                            </div>
+                            <button id="audit-btn" onclick="runAudit()" class="btn-audit bg-brand-500 hover:bg-brand-400 text-surface-950 font-semibold px-7 py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap min-w-[160px]">
+                                <span class="flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles"></i> Run AI Audit</span>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-4 mt-3 text-xs text-gray-500 flex-wrap">
+                            <span>Try:</span>
+                            <button onclick="setURL('https://allbirds.com/products/wool-runner')" class="hover:text-brand-500 transition-colors underline underline-offset-2">Allbirds</button>
+                            <button onclick="setURL('https://www.gymshark.com/products/gymshark-crest-hoodie')" class="hover:text-brand-500 transition-colors underline underline-offset-2">Gymshark</button>
+                            <button onclick="setURL('https://bombas.com/products/womens-ankle-socks')" class="hover:text-brand-500 transition-colors underline underline-offset-2">Bombas</button>
+                            <button onclick="setURL('https://shopify.com')" class="hover:text-brand-500 transition-colors underline underline-offset-2">Shopify</button>
+                        </div>
+                    </div>
+
+                    <!-- Loading -->
+                    <div id="loading-state" class="hidden mb-6">
+                        <div class="bg-surface-800 border border-surface-600 rounded-2xl p-6">
+                            <div class="flex items-center gap-4 mb-6">
+                                <div class="w-10 h-10 rounded-full bg-brand-500/20 flex items-center justify-center pulse-glow">
+                                    <i class="fa-solid fa-spinner fa-spin text-brand-500"></i>
+                                </div>
+                                <div>
+                                    <p class="font-medium text-white">Analyzing your page...</p>
+                                    <p id="loading-step" class="text-sm text-gray-400">Scraping metadata</p>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="skeleton h-40 rounded-xl"></div>
+                                <div class="skeleton h-40 rounded-xl"></div>
+                                <div class="skeleton h-40 rounded-xl"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="results-area" class="hidden">
+                        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+                            <div class="bg-surface-800 border border-surface-600 rounded-2xl p-5 flex flex-col items-center justify-center fade-up" style="animation-delay:0.1s">
+                                <p class="text-xs text-gray-400 uppercase tracking-widest mb-3 font-semibold">SEO Health Score</p>
+                                <div class="relative w-32 h-32">
+                                    <svg class="w-full h-full -rotate-90" viewBox="0 0 120 120">
+                                        <circle cx="60" cy="60" r="52" fill="none" stroke="#1B2540" stroke-width="8"/>
+                                        <circle id="score-circle" class="score-ring" cx="60" cy="60" r="52" fill="none" stroke="#00E5A0" stroke-width="8" stroke-linecap="round" stroke-dasharray="326.73" stroke-dashoffset="326.73"/>
+                                    </svg>
+                                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                        <span id="score-value" class="font-display text-3xl font-bold text-white">0</span>
+                                        <span class="text-[10px] text-gray-400 uppercase">out of 100</span>
+                                    </div>
+                                </div>
+                                <p id="score-label" class="text-sm mt-3 font-medium text-brand-500">—</p>
+                            </div>
+                            <div class="lg:col-span-3 grid grid-cols-2 sm:grid-cols-4 gap-3 fade-up" style="animation-delay:0.2s">
+                                <div class="bg-surface-800 border border-surface-600 rounded-xl p-4 text-center">
+                                    <i class="fa-solid fa-file-circle-check text-brand-500 mb-2"></i>
+                                    <p id="metric-title" class="text-lg font-bold font-display text-white">—</p>
+                                    <p class="text-xs text-gray-400">Title Tag</p>
+                                </div>
+                                <div class="bg-surface-800 border border-surface-600 rounded-xl p-4 text-center">
+                                    <i class="fa-solid fa-align-left text-brand-500 mb-2"></i>
+                                    <p id="metric-desc" class="text-lg font-bold font-display text-white">—</p>
+                                    <p class="text-xs text-gray-400">Meta Description</p>
+                                </div>
+                                <div class="bg-surface-800 border border-surface-600 rounded-xl p-4 text-center">
+                                    <i class="fa-solid fa-image text-brand-500 mb-2"></i>
+                                    <p id="metric-images" class="text-lg font-bold font-display text-white">—</p>
+                                    <p class="text-xs text-gray-400">Images (Missing Alt)</p>
+                                </div>
+                                <div class="bg-surface-800 border border-surface-600 rounded-xl p-4 text-center">
+                                    <i class="fa-solid fa-heading text-brand-500 mb-2"></i>
+                                    <p id="metric-headings" class="text-lg font-bold font-display text-white">—</p>
+                                    <p class="text-xs text-gray-400">Heading Tags</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-1 mb-4 border-b border-surface-600 overflow-x-auto fade-up" style="animation-delay:0.3s">
+                            <button class="result-tab tab-active px-4 py-2.5 text-sm font-medium whitespace-nowrap" onclick="switchTab('issues',this)">Technical Issues</button>
+                            <button class="result-tab px-4 py-2.5 text-sm font-medium text-gray-400 whitespace-nowrap" onclick="switchTab('ai-suggestions',this)">AI Suggestions</button>
+                            <button class="result-tab px-4 py-2.5 text-sm font-medium text-gray-400 whitespace-nowrap" onclick="switchTab('ai-content',this)">AI-Optimized Content</button>
+                            <button class="result-tab px-4 py-2.5 text-sm font-medium text-gray-400 whitespace-nowrap" onclick="switchTab('raw-data',this)">Raw Data</button>
+                        </div>
+
+                        <div id="tab-issues" class="tab-panel fade-up" style="animation-delay:0.35s"><div id="issues-list" class="space-y-2"></div></div>
+                        <div id="tab-ai-suggestions" class="tab-panel hidden"><div id="suggestions-list" class="space-y-3"></div></div>
+                        <div id="tab-ai-content" class="tab-panel hidden"><div id="ai-content-area" class="space-y-4"></div></div>
+                        <div id="tab-raw-data" class="tab-panel hidden"><pre id="raw-json" class="bg-surface-900 border border-surface-600 rounded-xl p-5 text-xs text-gray-300 overflow-x-auto font-mono leading-relaxed"></pre></div>
+                    </div>
+
+                    <div class="mt-10">
+                        <h3 class="font-display text-lg font-semibold mb-4 text-white">Recent Audits</h3>
+                        <div id="history-list" class="space-y-2">
+                            <div class="bg-surface-800 border border-surface-600 rounded-xl p-4 text-sm text-gray-300">No audits yet — run your first audit above.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- KEYWORDS VIEW -->
+                <section id="view-keywords" class="view-section hidden">
+                    <div class="mb-8">
+                        <h2 class="font-display text-3xl font-bold tracking-tight mb-2">Keyword <span class="text-brand-500">Magic Tool</span></h2>
+                        <p class="text-gray-400 max-w-xl">Discover high-value keywords with volume, difficulty, and intent data.</p>
+                    </div>
+                    <div class="bg-surface-800 border border-surface-600 rounded-2xl p-5 mb-6">
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <div class="flex-1 relative">
+                                <i class="fa-solid fa-key absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"></i>
+                                <input id="keyword-input" type="text" placeholder="Enter seed keyword — e.g. running shoes" class="w-full bg-surface-900 border border-surface-600 rounded-xl pl-11 pr-4 py-3.5 text-white placeholder-gray-500 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all text-sm">
+                            </div>
+                            <button onclick="runKeywordResearch()" class="bg-brand-500 hover:bg-brand-400 text-surface-950 font-semibold px-7 py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap">
+                                <i class="fa-solid fa-sparkles"></i> Research
+                            </button>
+                        </div>
+                    </div>
+                    <div id="keyword-results" class="hidden">
+                        <div class="bg-surface-800 border border-surface-600 rounded-xl overflow-hidden">
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-sm">
+                                    <thead><tr class="border-b border-surface-600 text-gray-400 text-xs uppercase"><th class="text-left p-4">Keyword</th><th class="text-right p-4">Volume</th><th class="text-right p-4">Difficulty</th><th class="text-center p-4">Intent</th><th class="text-right p-4">CPC</th></tr></thead>
+                                    <tbody id="keyword-table-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TRACKING VIEW -->
+                <section id="view-tracking" class="view-section hidden">
+                    <div class="mb-8">
+                        <h2 class="font-display text-3xl font-bold tracking-tight mb-2">Position <span class="text-brand-500">Tracking</span></h2>
+                        <p class="text-gray-400 max-w-xl">Monitor keyword rankings and track progress over time.</p>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div class="bg-surface-800 border border-surface-600 rounded-xl p-5"><p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Keywords Tracked</p><p class="font-display text-2xl font-bold text-white">142</p><p class="text-xs text-brand-500 mt-1"><i class="fa-solid fa-arrow-up mr-1"></i>+12 this week</p></div>
+                        <div class="bg-surface-800 border border-surface-600 rounded-xl p-5"><p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Average Position</p><p class="font-display text-2xl font-bold text-white">18.3</p><p class="text-xs text-brand-500 mt-1"><i class="fa-solid fa-arrow-up mr-1"></i>Improved 2.1</p></div>
+                        <div class="bg-surface-800 border border-surface-600 rounded-xl p-5"><p class="text-xs text-gray-400 uppercase tracking-wider mb-1">Top 3 Rankings</p><p class="font-display text-2xl font-bold text-white">23</p><p class="text-xs text-brand-500 mt-1"><i class="fa-solid fa-arrow-up mr-1"></i>+3 new</p></div>
+                    </div>
+                    <div class="bg-surface-800 border border-surface-600 rounded-xl p-6"><canvas id="tracking-chart" height="250"></canvas></div>
+                </section>
+
+                <!-- GENERIC VIEW -->
+                <section id="view-generic" class="view-section hidden">
+                    <div class="mb-8">
+                        <h2 id="generic-title" class="font-display text-3xl font-bold tracking-tight mb-2"></h2>
+                        <p class="text-gray-400 max-w-xl">This module is ready for integration. Configure your data sources to unlock insights.</p>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" id="generic-cards"></div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <div id="toast-container" class="fixed top-16 right-4 z-50 space-y-2"></div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <script>
+        /* ============================================
+           CONFIG — Change this to connect your backend
+        ============================================ */
+        const API_BASE = 'http://localhost:8000';
+        let backendConnected = false;
+        let auditHistory = [];
+
+        /* ============================================
+           CHECK BACKEND CONNECTION ON LOAD
+        ============================================ */
+        async function checkBackendConnection() {
+            const dot = document.getElementById('status-dot');
+            const text = document.getElementById('status-text');
+            try {
+                const res = await fetch(API_BASE + '/health', { signal: AbortSignal.timeout(3000) });
+                if (res.ok) {
+                    backendConnected = true;
+                    dot.className = 'status-dot status-connected';
+                    text.textContent = 'Backend: Connected';
+                    text.className = 'text-xs text-brand-500';
+                    showToast('Backend connected — live scraping enabled.', 'success');
+                } else throw new Error();
+            } catch {
+                backendConnected = false;
+                dot.className = 'status-dot status-disconnected';
+                text.textContent = 'Backend: Offline (Demo Mode)';
+                text.className = 'text-xs text-red-400';
+                showToast('Backend offline — using built-in demo data. Start the Python server for live scraping.', 'warn');
+            }
+        }
+
+        /* ============================================
+           SIDEBAR TOGGLE
+        ============================================ */
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+            document.getElementById('sidebar-overlay').classList.toggle('hidden');
+        }
+
+        /* ============================================
+           VIEW SWITCHING
+        ============================================ */
+        function switchView(viewId, navEl) {
+            document.querySelectorAll('.view-section').forEach(s => s.classList.add('hidden'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            if (navEl) navEl.classList.add('active');
+
+            const target = document.getElementById('view-' + viewId);
+            if (target) {
+                target.classList.remove('hidden');
+            } else {
+                const g = document.getElementById('view-generic');
+                g.classList.remove('hidden');
+                const names = {
+                    'backlinks':'Backlink Analytics','organic':'Organic Research','keyword-gap':'Keyword Gap',
+                    'onpage':'On Page SEO Checker','domain':'Domain Overview','traffic':'Traffic Analytics',
+                    'market':'Market Explorer','topic':'Topic Research','seo-writing':'SEO Writing Assistant',
+                    'content-audit':'Content Audit','ppc':'Keyword PPC Tool','ads-history':'Ads History',
+                    'pla':'PLA Research','social-poster':'Social Poster','social-analytics':'Social Analytics',
+                    'social-ads':'Social Ads Management'
+                };
+                document.getElementById('generic-title').innerHTML = (names[viewId]||viewId) + ' <span class="text-brand-500">Intelligence</span>';
+                renderGenericCards();
+            }
+
+            const crumbs = {
+                'audit':'SEO / Site Audit','keywords':'SEO / Keyword Magic','tracking':'SEO / Position Tracking',
+                'backlinks':'SEO / Backlink Analytics','organic':'SEO / Organic Research','domain':'Competitor / Domain',
+                'traffic':'Competitor / Traffic','market':'Competitor / Market','topic':'Content / Topic Research',
+                'seo-writing':'Content / Writing Assistant','content-audit':'Content / Audit',
+                'ppc':'PPC / Keyword Tool','ads-history':'PPC / Ads History','pla':'PPC / PLA Research',
+                'social-poster':'Social / Poster','social-analytics':'Social / Analytics','social-ads':'Social / Ads'
+            };
+            document.getElementById('breadcrumb').textContent = crumbs[viewId] || viewId;
+
+            if (window.innerWidth < 1024) {
+                document.getElementById('sidebar').classList.remove('open');
+                document.getElementById('sidebar-overlay').classList.add('hidden');
+            }
+        }
+
+        function renderGenericCards() {
+            const c = document.getElementById('generic-cards');
+            const items = [
+                {icon:'fa-database',title:'Connect Data Source',desc:'Link your Google Search Console or analytics account to populate this module with real data.'},
+                {icon:'fa-robot',title:'AI Analysis Ready',desc:'Machine learning models are pre-configured to deliver insights once data flows in.'},
+                {icon:'fa-chart-simple',title:'Visual Reports',desc:'Interactive charts and exportable reports will be generated automatically.'},
+                {icon:'fa-bell',title:'Alert System',desc:'Set up custom alerts for ranking changes, new backlinks, or competitor movements.'},
+                {icon:'fa-code',title:'API Access',desc:'All data in this module is available via REST API for integration with your workflow.'},
+                {icon:'fa-shield-halved',title:'Enterprise Security',desc:'SOC 2 compliant infrastructure. Your data never leaves your dedicated environment.'}
+            ];
+            c.innerHTML = items.map((x,i)=>`
+                <div class="tool-card bg-surface-800 rounded-xl p-5 fade-up" style="animation-delay:${i*0.08}s">
+                    <div class="w-10 h-10 rounded-lg bg-brand-500/10 flex items-center justify-center mb-3"><i class="fa-solid ${x.icon} text-brand-500"></i></div>
+                    <h4 class="font-display font-semibold text-white mb-1">${x.title}</h4>
+                    <p class="text-sm text-gray-400 leading-relaxed">${x.desc}</p>
+                </div>`).join('');
+        }
+
+        /* ============================================
+           TAB SWITCHING
+        ============================================ */
+        function switchTab(id, btn) {
+            document.querySelectorAll('.tab-panel').forEach(p=>p.classList.add('hidden'));
+            document.querySelectorAll('.result-tab').forEach(t=>{t.classList.remove('tab-active');t.classList.add('text-gray-400');});
+            document.getElementById('tab-'+id).classList.remove('hidden');
+            btn.classList.add('tab-active'); btn.classList.remove('text-gray-400');
+        }
+
+        /* ============================================
+           TOAST NOTIFICATIONS
+        ============================================ */
+        function showToast(msg, type='info') {
+            const c = document.getElementById('toast-container');
+            const colors = {success:'border-green-500 bg-green-500/10 text-green-400',error:'border-red-500 bg-red-500/10 text-red-400',info:'border-blue-500 bg-blue-500/10 text-blue-400',warn:'border-yellow-500 bg-yellow-500/10 text-yellow-400'};
+            const icons = {success:'fa-circle-check',error:'fa-circle-xmark',info:'fa-circle-info',warn:'fa-triangle-exclamation'};
+            const t = document.createElement('div');
+            t.className = 'flex items-center gap-3 border rounded-lg px-4 py-3 text-sm backdrop-blur-xl fade-up '+colors[type];
+            t.innerHTML = '<i class="fa-solid '+icons[type]+'"></i><span>'+msg+'</span>';
+            c.appendChild(t);
+            setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.3s';setTimeout(()=>t.remove(),300);},5000);
+        }
+
+        function setURL(u) { document.getElementById('url-input').value = u; }
+
+        /* ============================================
+           RUN AUDIT — Connects to Backend OR uses Demo
+        ============================================ */
+        async function runAudit() {
+            const urlInput = document.getElementById('url-input');
+            const url = urlInput.value.trim();
+            if (!url) { showToast('Please enter a URL to audit.','warn'); urlInput.focus(); return; }
+            try { new URL(url); } catch { showToast('Invalid URL. Include https://','error'); return; }
+
+            const btn = document.getElementById('audit-btn');
+            const loading = document.getElementById('loading-state');
+            const results = document.getElementById('results-area');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="flex items-center gap-2"><i class="fa-solid fa-spinner fa-spin"></i> Analyzing...</span>';
+            loading.classList.remove('hidden');
+            results.classList.add('hidden');
+
+            const steps = ['Scraping metadata','Analyzing technical SEO','Running AI evaluation','Generating recommendations'];
+            let si = 0;
+            const stepTimer = setInterval(()=>{ si=(si+1)%steps.length; document.getElementById('loading-step').textContent=steps[si]; },1200);
+
+            if (backendConnected) {
+                /* ---- REAL BACKEND ---- */
+                try {
+                    const res = await fetch(API_BASE+'/audit?url='+encodeURIComponent(url),{method:'POST',headers:{'Content-Type':'application/json'}});
+                    if (!res.ok) throw new Error('Server error '+res.status);
+                    const data = await res.json();
+                    clearInterval(stepTimer);
+                    renderResults(data, url);
+                    showToast('Live audit complete!','success');
+                } catch(e) {
+                    clearInterval(stepTimer);
+                    console.error('Backend error:',e);
+                    runDemoAudit(url, 'Backend error — showing demo results.');
+                }
+            } else {
+                /* ---- DEMO MODE ---- */
+                runDemoAudit(url, 'Demo mode — start the Python backend for live scraping.');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '<span class="flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles"></i> Run AI Audit</span>';
+        }
+
+        function runDemoAudit(url, msg) {
+            const data = generateDemoData(url);
+            setTimeout(()=>{
+                renderResults(data, url);
+                showToast(msg, 'info');
+            }, 2500);
+        }
+
+        /* ============================================
+           DEMO DATA GENERATOR
+        ============================================ */
+        function generateDemoData(url) {
+            let domain = url;
+            try { domain = new URL(url).hostname; } catch{}
+            const brand = domain.split('.')[0];
+            const cap = brand.charAt(0).toUpperCase()+brand.slice(1);
+
+            return {
+                scraped: {
+                    url, title: cap+' | Premium Products & Free Shipping',
+                    description: 'Shop '+cap+' for premium quality products. Free shipping on orders over $50. Discover our latest collection today and experience the difference.',
+                    h1: cap+' — Official Store', h2_count: 4, h3_count: 7, images_total: 23,
+                    images_missing_alt: 8, canonical: url, has_viewport: true, has_robots: true,
+                    lang_attr: 'en', schema_markup: true
+                },
+                ai_analysis: {
+                    optimized_title: cap+' Official Store | Premium Quality & Fast Free Shipping',
+                    optimized_description: 'Discover '+cap+"'s curated collection of premium products. Handcrafted quality, free shipping over $50, and hassle-free returns. Shop the new arrivals now.",
+                    conversion_steps: [
+                        {step:'Add trust signals above the fold',detail:'Place customer review count (e.g., "4.8/5 from 2,340 reviews"), money-back guarantee badge, and security seals within the first viewport to reduce bounce rate and build instant credibility.'},
+                        {step:'Implement urgency-driven CTAs',detail:'Replace generic "Shop Now" buttons with dynamic CTAs like "Only 3 left in stock — Order in the next 2h for next-day delivery." Scarcity and urgency increase conversion by up to 332%.'},
+                        {step:'Optimize product imagery with contextual alt text',detail:'8 images are missing alt attributes. Rewrite every alt to include product name + key benefit. This improves both accessibility and image search rankings.'}
+                    ],
+                    commercial_description: "Elevate your everyday with "+cap+" — where meticulous craftsmanship meets modern design. Each product in our collection is engineered for those who refuse to compromise on quality, comfort, or sustainability. From premium materials sourced responsibly to construction that outlasts trends, "+cap+" delivers an experience, not just a product.\n\nJoin 50,000+ satisfied customers who've made the switch. With free shipping on orders over $50, hassle-free 60-day returns, and 24/7 customer support, there's zero risk in discovering why "+cap+" is the fastest-growing name in premium goods. Your upgrade starts here."
+                },
+                score: 72,
+                issues: [
+                    {severity:'critical',message:'8 images missing alt text — impacts accessibility and image SEO'},
+                    {severity:'critical',message:'Meta description exceeds 160 characters (182 chars) — will be truncated in SERPs'},
+                    {severity:'warning',message:'No FAQ schema detected — missing rich snippet opportunity'},
+                    {severity:'warning',message:'H1 tag contains only brand name — add primary keyword for relevance'},
+                    {severity:'warning',message:'Page speed score is 62/100 — above 3s load time increases bounce by 53%'},
+                    {severity:'info',message:'Canonical tag is properly set'},
+                    {severity:'info',message:'Viewport meta tag detected — mobile rendering enabled'},
+                    {severity:'info',message:'Schema markup (JSON-LD) detected on page'}
+                ]
+            };
+        }
+
+        /* ============================================
+           RENDER RESULTS
+        ============================================ */
+        function renderResults(data, url) {
+            document.getElementById('loading-state').classList.add('hidden');
+            document.getElementById('results-area').classList.remove('hidden');
+
+            const scraped = data.scraped || data;
+            const score = data.score || 72;
+            const issues = data.issues || [];
+            const ai = data.ai_analysis || {};
+
+            animateScore(score);
+
+            document.getElementById('metric-title').textContent = scraped.title ? Math.min(scraped.title.length,70)+'/70' : '0/70';
+            document.getElementById('metric-desc').textContent = scraped.description ? Math.min(scraped.description.length,160)+'/160' : '0/160';
+            document.getElementById('metric-images').textContent = (scraped.images_missing_alt||0)+'/'+(scraped.images_total||0);
+            document.getElementById('metric-headings').textContent = 'H1:'+(scraped.h1?1:0)+' H2:'+(scraped.h2_count||0)+' H3:'+(scraped.h3_count||0);
+
+            const sl = document.getElementById('score-label');
+            if (score>=80) {sl.textContent='Excellent';sl.className='text-sm mt-3 font-medium text-brand-500';}
+            else if (score>=60) {sl.textContent='Good — Room to Improve';sl.className='text-sm mt-3 font-medium text-yellow-400';}
+            else {sl.textContent='Needs Attention';sl.className='text-sm mt-3 font-medium text-red-400';}
+
+            // Issues
+            document.getElementById('issues-list').innerHTML = issues.map(i=>{
+                const sc = i.severity==='critical'?'severity-critical':i.severity==='warning'?'severity-warning':'severity-info';
+                const si = i.severity==='critical'?'fa-circle-exclamation text-red-400':i.severity==='warning'?'fa-triangle-exclamation text-yellow-400':'fa-circle-info text-blue-400';
+                const sb = i.severity==='critical'?'bg-red-500/10 text-red-400':i.severity==='warning'?'bg-yellow-500/10 text-yellow-400':'bg-blue-500/10 text-blue-400';
+                const sl2 = i.severity.charAt(0).toUpperCase()+i.severity.slice(1);
+                return `<div class="bg-surface-800 border border-surface-600 rounded-lg p-4 flex items-start gap-3 ${sc}"><i class="fa-solid ${si} mt-0.5"></i><div class="flex-1"><p class="text-sm text-white">${i.message}</p></div><span class="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${sb}">${sl2}</span></div>`;
+            }).join('');
+
+            // AI Suggestions
+            const steps = ai.conversion_steps||[];
+            document.getElementById('suggestions-list').innerHTML = steps.map((s,i)=>`
+                <div class="bg-surface-800 border border-surface-600 rounded-xl p-5 fade-up" style="animation-delay:${i*0.1}s">
+                    <div class="flex items-start gap-4">
+                        <div class="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="font-display font-bold text-brand-500 text-sm">${i+1}</span></div>
+                        <div><h4 class="font-display font-semibold text-white mb-1">${s.step}</h4><p class="text-sm text-gray-400 leading-relaxed">${s.detail}</p></div>
+                    </div>
+                </div>`).join('');
+
+            // AI Content
+            const eT = (ai.optimized_title||'').replace(/'/g,"\\'");
+            const eD = (ai.optimized_description||'').replace(/'/g,"\\'");
+            const eC = (ai.commercial_description||'').replace(/'/g,"\\'").replace(/\n/g,"\\n");
+            document.getElementById('ai-content-area').innerHTML = `
+                <div class="bg-surface-800 border border-surface-600 rounded-xl p-5 fade-up" style="animation-delay:0.1s">
+                    <div class="flex items-center justify-between mb-3"><h4 class="font-display font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-heading text-brand-500 text-sm"></i> Optimized SEO Title</h4><button onclick="copyText(this,'${eT}')" class="text-xs text-gray-500 hover:text-brand-500 transition-colors flex items-center gap-1"><i class="fa-regular fa-copy"></i> Copy</button></div>
+                    <p class="text-sm text-brand-300 bg-brand-500/5 border border-brand-500/10 rounded-lg p-3">${ai.optimized_title||'—'}</p>
+                    <p class="text-xs text-gray-500 mt-2">${(ai.optimized_title||'').length}/70 characters</p>
+                </div>
+                <div class="bg-surface-800 border border-surface-600 rounded-xl p-5 fade-up" style="animation-delay:0.2s">
+                    <div class="flex items-center justify-between mb-3"><h4 class="font-display font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-align-left text-brand-500 text-sm"></i> Optimized Meta Description</h4><button onclick="copyText(this,'${eD}')" class="text-xs text-gray-500 hover:text-brand-500 transition-colors flex items-center gap-1"><i class="fa-regular fa-copy"></i> Copy</button></div>
+                    <p class="text-sm text-gray-300 bg-surface-900 rounded-lg p-3 leading-relaxed">${ai.optimized_description||'—'}</p>
+                    <p class="text-xs text-gray-500 mt-2">${(ai.optimized_description||'').length}/160 characters</p>
+                </div>
+                <div class="bg-surface-800 border border-surface-600 rounded-xl p-5 fade-up" style="animation-delay:0.3s">
+                    <div class="flex items-center justify-between mb-3"><h4 class="font-display font-semibold text-white flex items-center gap-2"><i class="fa-solid fa-pen-nib text-brand-500 text-sm"></i> Commercial Intent Description</h4><button onclick="copyText(this,'${eC}')" class="text-xs text-gray-500 hover:text-brand-500 transition-colors flex items-center gap-1"><i class="fa-regular fa-copy"></i> Copy</button></div>
+                    <div class="text-sm text-gray-300 bg-surface-900 rounded-lg p-3 leading-relaxed whitespace-pre-line">${ai.commercial_description||'—'}</div>
+                </div>`;
+
+            document.getElementById('raw-json').textContent = JSON.stringify(data, null, 2);
+            addHistory(url, score);
+        }
+
+        /* ============================================
+           SCORE ANIMATION
+        ============================================ */
+        function animateScore(target) {
+            const circle = document.getElementById('score-circle');
+            const val = document.getElementById('score-value');
+            const circ = 2*Math.PI*52;
+            const offset = circ-(target/100)*circ;
+            let color = '#00E5A0'; if(target<50)color='#EF4444'; else if(target<75)color='#F59E0B';
+            circle.style.stroke=color; circle.style.strokeDashoffset=circ;
+            requestAnimationFrame(()=>{circle.style.strokeDashoffset=offset;});
+            let cur=0;const start=performance.now();
+            function tick(now){const p=Math.min((now-start)/1500,1);cur=Math.round((1-Math.pow(1-p,3))*target);val.textContent=cur;if(p<1)requestAnimationFrame(tick);}
+            requestAnimationFrame(tick);
+        }
+
+        /* ============================================
+           COPY TO CLIPBOARD
+        ============================================ */
+        function copyText(btn, text) {
+            const d = text.replace(/\\n/g,'\n').replace(/\\'/g,"'");
+            navigator.clipboard.writeText(d).then(()=>{
+                const o=btn.innerHTML;btn.innerHTML='<i class="fa-solid fa-check"></i> Copied!';btn.classList.add('text-brand-500');
+                setTimeout(()=>{btn.innerHTML=o;btn.classList.remove('text-brand-500');},2000);
+            }).catch(()=>showToast('Copy failed','error'));
+        }
+
+        /* ============================================
+           HISTORY
+        ============================================ */
+        function addHistory(url, score) {
+            const list = document.getElementById('history-list');
+            auditHistory.unshift({url,score,time:new Date().toLocaleTimeString()});
+            if(auditHistory.length===1) list.innerHTML='';
+            const cc = score>=80?'text-brand-500 bg-brand-500/10':score>=60?'text-yellow-400 bg-yellow-400/10':'text-red-400 bg-red-400/10';
+            const el = document.createElement('div');
+            el.className='bg-surface-800 border border-surface-600 rounded-xl p-4 flex items-center justify-between text-sm fade-up cursor-pointer hover:bg-surface-700 transition-colors';
+            el.innerHTML=`<div class="flex items-center gap-3 min-w-0"><div class="w-8 h-8 rounded-lg ${cc} flex items-center justify-center flex-shrink-0"><span class="font-display font-bold text-xs">${score}</span></div><div class="min-w-0"><p class="text-white truncate">${url}</p><p class="text-xs text-gray-500">${auditHistory[0].time}</p></div></div><button onclick="event.stopPropagation();document.getElementById('url-input').value='${url}';" class="text-gray-500 hover:text-brand-500 transition-colors flex-shrink-0 ml-2"><i class="fa-solid fa-rotate-right"></i></button>`;
+            list.prepend(el);
+        }
+
+        /* ============================================
+           KEYWORD RESEARCH
+        ============================================ */
+        function runKeywordResearch() {
+            const seed = document.getElementById('keyword-input').value.trim();
+            if(!seed){showToast('Enter a seed keyword.','warn');return;}
+            document.getElementById('keyword-results').classList.remove('hidden');
+            const mods = ['best','top','cheap','premium','review','vs','for women','for men','near me','online','2024','sustainable','organic'];
+            const kws = mods.map(m=>({kw:m+' '+seed,vol:Math.floor(Math.random()*18000)+500,diff:Math.floor(Math.random()*85)+10,intent:['Commercial','Informational','Transactional','Navigational'][Math.floor(Math.random()*4)],cpc:(Math.random()*4.5+0.3).toFixed(2)})).sort((a,b)=>b.vol-a.vol);
+            document.getElementById('keyword-table-body').innerHTML = kws.map(k=>{
+                const dc=k.diff<30?'text-brand-500':k.diff<60?'text-yellow-400':'text-red-400';
+                const db=k.diff<30?'bg-brand-500':k.diff<60?'bg-yellow-400':'bg-red-400';
+                const ic={'Commercial':'bg-purple-500/10 text-purple-400','Informational':'bg-blue-500/10 text-blue-400','Transactional':'bg-brand-500/10 text-brand-400','Navigational':'bg-gray-500/10 text-gray-400'}[k.intent];
+                return `<tr class="border-b border-surface-600 hover:bg-surface-700/50"><td class="p-4 text-white font-medium">${k.kw}</td><td class="p-4 text-right text-gray-300">${k.vol.toLocaleString()}</td><td class="p-4 text-right"><div class="flex items-center justify-end gap-2"><div class="w-16 h-1.5 bg-surface-600 rounded-full overflow-hidden"><div class="${db} h-full rounded-full" style="width:${k.diff}%"></div></div><span class="${dc} text-xs font-medium">${k.diff}</span></div></td><td class="p-4 text-center"><span class="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded ${ic}">${k.intent}</span></td><td class="p-4 text-right text-gray-300">$${k.cpc}</td></tr>`;
+            }).join('');
+            showToast('Found '+kws.length+' keywords for "'+seed+'".','success');
+        }
+
+        /* ============================================
+           TRACKING CHART
+        ============================================ */
+        function initChart() {
+            const c = document.getElementById('tracking-chart');
+            if(!c) return;
+            new Chart(c.getContext('2d'),{
+                type:'line',
+                data:{
+                    labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+                    datasets:[
+                        {label:'Primary Keywords',data:[42,38,35,30,28,24,21,19,18,16,15,13],borderColor:'#00E5A0',backgroundColor:'rgba(0,229,160,0.08)',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:'#00E5A0'},
+                        {label:'Secondary Keywords',data:[65,60,58,52,48,44,40,37,34,31,29,27],borderColor:'#F0B429',backgroundColor:'rgba(240,180,41,0.05)',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:'#F0B429'}
+                    ]
+                },
+                options:{
+                    responsive:true,maintainAspectRatio:false,
+                    scales:{
+                        y:{reverse:true,grid:{color:'rgba(27,37,64,0.8)'},ticks:{color:'#6B7280'},title:{display:true,text:'Ranking Position (lower=better)',color:'#6B7280'}},
+                        x:{grid:{color:'rgba(27,37,64,0.5)'},ticks:{color:'#6B7280'}}
+                    },
+                    plugins:{legend:{labels:{color:'#9CA3AF',usePointStyle:true}},tooltip:{backgroundColor:'#0F1629',borderColor:'#1B2540',borderWidth:1,titleColor:'#F9FAFB',bodyColor:'#9CA3AF'}}
+                }
+            });
+        }
+
+        /* ============================================
+           KEYBOARD SHORTCUTS
+        ============================================ */
+        document.getElementById('url-input').addEventListener('keydown',e=>{if(e.key==='Enter')runAudit();});
+        document.getElementById('keyword-input').addEventListener('keydown',e=>{if(e.key==='Enter')runKeywordResearch();});
+        document.querySelectorAll('#sidebar-nav .nav-item').forEach(l=>l.addEventListener('click',e=>e.preventDefault()));
+
+        /* ============================================
+           STARTUP
+        ============================================ */
+        document.addEventListener('DOMContentLoaded',()=>{
+            initChart();
+            checkBackendConnection();
+        });
+    </script>
+</body>
+</html>
